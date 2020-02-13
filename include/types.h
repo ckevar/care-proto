@@ -18,14 +18,5 @@ typedef struct {
 	sem_t outFrameReady;
 } PORTUSERDATA_T;
 
-typedef struct {
-	std::vector<cv::Rect> 	sharedFaces;
-	sem_t 					*semSharedFaces;
-	double 					heartRate;
-	pthread_t graphicsTID;
-	pthread_attr_t graphicsTAttr;
-	unsigned exit;
-} GRAPHCARE_T;
-
 
 #endif

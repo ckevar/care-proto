@@ -37,7 +37,7 @@ inline void oCV_checkFrameRate (struct timespec *t1) {
 	CAReOCV_frames++;
 
 	clock_gettime(CLOCK_MONOTONIC, &t2);
-	
+
 	float d = (t2.tv_sec + t2.tv_nsec / 1000000000.0) - (t1->tv_sec + t1->tv_nsec / 1000000000.0);
 	float fps = CAReOCV_frames / d;
 
@@ -48,13 +48,26 @@ inline void oCV_checkFrameRate (struct timespec *t1) {
 void *oCV_runRecognizerTask(void *arg) {
 	FACERECOG_T *fr = (FACERECOG_T *) arg;
 	struct timespec t1;
-	cv::Mat scaledImg, faceROI;
+	cv::Mat scaledImg, faceROI, eyeROI;
 	std::vector<cv::Rect> faces;
 	std::vector<cv::Rect> eyes;
-	FILE *fp;
-	fp = fopen("face.txt", "a");
-	scaledImg.create(fr->height / fr->scale, fr->width / fr->scale, CV_8UC1);
+	unsigned faces_not_found, eyes_not_found;
+	unsigned char c[CAReOCV_MAX_EYES];
 
+	memset(c, 0, CAReOCV_MAX_EYES);
+
+	FILE *fp;
+
+	#ifdef CHECK_THRESHOLD_OPENCV
+		unsigned a = 0;
+		fp = fopen("face.m", "a");
+	#endif
+
+	#ifdef CHECK_EYE_DIRECTION
+		fp = fopen("eyes_direction.dat", "a");
+	#endif
+
+	scaledImg.create(fr->height / fr->scale, fr->width / fr->scale, CV_8UC1);
 	clock_gettime(CLOCK_MONOTONIC, &t1);
 
 	while (fr->exit) {
@@ -62,30 +75,114 @@ void *oCV_runRecognizerTask(void *arg) {
 		// oCV_checkFrameRate(&t1);
 		cv::resize(fr->image, scaledImg, scaledImg.size(), 0, 0, cv::INTER_LINEAR);
 		fr->face_cascade.detectMultiScale(scaledImg, faces, 1.4, 3, 0, cv::Size(100, 100), cv::Size(150, 150));
-		
+
 		/*EYE DETECTOR */
 		eyes.clear();
 		for (unsigned i = 0; i < faces.size(); i++) {
+			faces_not_found = 0;
 			faceROI = scaledImg(faces[i]);
 			fr->eyes_cascade.detectMultiScale(faceROI, eyes, 1.4, 3, 0, cv::Size(20, 20)); 
+
+			// THIS IS NOT A GOOD WAY TO REMOVE EXTRA EYES FOUND
+			while (eyes.size() > 2*faces.size())
+				eyes.pop_back();
+
 			for (unsigned j = 0; j < eyes.size(); ++j) {
+				eyes_not_found = 0;
+				// making dark tones black and clear tones whites 
+				// cv::equalizeHist(faceROI(eyes[j]), eyeROI);
+                		cv::threshold(faceROI(eyes[j]), eyeROI, 17, 255, cv::THRESH_BINARY_INV);
+				int positives = 0;
+				int pos_x = 0;
+				int pos_y = 0;
+
+				#ifdef CHECK_THRESHOLD_OPENCV
+					fprintf(fp, "img%d = [", a);
+				#endif
+
+				for (int y = 0; y < eyeROI.rows; y++) {
+					for (int x = 0; x < eyeROI.cols; ++x) {
+						unsigned char value = eyeROI.at<unsigned char>(y, x);
+						
+						#ifdef CHECK_THRESHOLD_OPENCV
+							fprintf(fp, "%d ", value);
+						#endif
+
+						if (value > 0) {
+							positives ++;
+							pos_x += x;
+							pos_y += y;
+						}
+					}
+					#ifdef CHECK_THRESHOLD_OPENCV
+						fprintf(fp, "\n");
+					#endif
+				}
+
+				#ifdef CHECK_THRESHOLD_OPENCV
+					fprintf(fp, "];");
+					a += 1;
+				#endif
+
+				if (positives) {
+					int x_centroids = pos_x / positives;
+					int y_centroids = pos_y / positives;
+					
+					#ifdef CHECK_EYE_DIRECTION
+						fprintf(fp, "%f %f\n", ((double)x_centroids) / eyeROI.cols, ((double) y_centroids / eyeROI.rows));
+					#endif
+
+					if (c[j] != CAReOCV_LOOKING_LEFT && x_centroids > (29 * eyeROI.cols / 50)) 
+						c[j] = CAReOCV_LOOKING_LEFT;
+
+					if (c[j] != CAReOCV_LOOKING_RIGHT && x_centroids < (2 * eyeROI.cols / 5)) 
+						c[j] = CAReOCV_LOOKING_RIGHT;
+
+					if (c[j] != CAReOCV_LOOKING_CENTER && x_centroids > (2 * eyeROI.cols / 5) && x_centroids < (29 * eyeROI.cols / 50))
+						c[j] = CAReOCV_LOOKING_CENTER;
+				}
+
+				if ((j % 2) == 1) {
+					if (c[j - 1] == c[j] && c[j]) {
+						switch (c[j]) {
+							case CAReOCV_LOOKING_LEFT:
+								printf("LEFT\n");
+								break;
+							case CAReOCV_LOOKING_RIGHT:
+								printf("RIGHT\n");
+								break;
+							case CAReOCV_LOOKING_CENTER:
+								printf("CENTER\n");
+								break;
+							default: break;
+						}
+					}
+ 				}
+				// Eyes absolute position
 				eyes[j].x += faces[i].x; 
 				eyes[j].y += faces[i].y; 
 			}
+
 		}
-		// THIS IS NOT A GOOD WAY TO REMOVE EXTRA EYES FOUND
-		while (eyes.size() > 2*faces.size()) {
-			eyes.pop_back();
-		}
+		if (faces.size() == 0) {
+			faces_not_found++;
+			eyes_not_found = 0;
+		} 
+
+		if (eyes.size() == 0)
+			eyes_not_found++;
+
 		/*END EYE DETECTOR*/
-		fprintf(fp, "%d %d\n", faces.size(), eyes.size());
 		sem_wait(&fr->detectionReady);
-		*fr->faces = eyes;
+		// *fr->faces = eyes;
+		fr->buffer->rect = eyes;
+		memcpy(fr->buffer->look_dir, c, eyes.size());
 		sem_post(&fr->detectionReady);
 	}
 
 	pthread_exit(NULL);
 }
+
 
 void CAReOCV_ScaleDownImage(FACERECOG_T *fr, int scale) {
 	fr->scale = scale;
@@ -100,11 +197,11 @@ void oCV_loadAttributes(FACERECOG_T *fr) {
 	pthread_attr_setschedparam(&fr->oCVThreadAttr, &m_param);
 }
 
-int CAReOCV_runRecognizer(FACERECOG_T *fr, std::vector<cv::Rect> *faces) {
+int CAReOCV_runRecognizer(FACERECOG_T *fr, RECOGBUFFER_T *faces) {
 	int rc;
 
 	fr->exit = 1;
-	fr->faces = faces;
+	fr->buffer = faces;
 	oCV_loadAttributes(fr);
 
 	rc = pthread_create(&fr->oCVThreadID, &fr->oCVThreadAttr, oCV_runRecognizerTask, (void *) fr);

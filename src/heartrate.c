@@ -34,6 +34,12 @@ void *runMeasureTask(void *arg) {
 	kalman.setR(2.78);
 	kalman.setP0(14);
 	*hr->bpm = 0.0;
+
+	#ifdef LOG_MAX30102_FREQOUT
+		FILE *fp;
+		fp = fopen("freqMAX30102.dat", "w");
+	#endif
+
 	// precomputes the twiddle factor for FFT
 	createTwiddleTable(W, EXP_HR);
 	while(hr->exit) {
@@ -52,10 +58,15 @@ void *runMeasureTask(void *arg) {
 
 		searchMax(Y, hr, &freqIndex);
 
+		#ifdef LOG_MAX30102_FREQOUT
+			fprintf(fp, "%d\n", freqIndex);
+		#endif
+
 		if (redLED > SIGNAL_THRESHOLD) {		// finger on sesor
 			if (hr->peak < 5000)	{			// heart rate acceptable value
 				/* do I need a protection for a single variable? */
-				*hr->bpm = kalman.update(freqIndex * FS_HR * 60.0 / N_HR);
+				// *hr->bpm = kalman.update(freqIndex * FS_HR * 60.0 / N_HR);
+				*hr->bpm = freqIndex * FS_HR * 60.0 / N_HR;
 			} else								// no aceptable value
 				*hr->bpm = -2;	
 		} else 									// no finger on sensor

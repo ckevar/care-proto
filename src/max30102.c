@@ -47,10 +47,16 @@ int MAX30102::settings() {
 
 	/* SPO2 SETTINGS */
 	// range 4096nA
-	// sample rate 100Mhz
 	// LED pulse width 411us
-	if(sendOne(MAX30102_SPO2_CONFIG, MAX30102_SPO2_ADC_RGE_4096 | MAX30102_SPO2_SR_100HZ | MAX30102_LED_PW_411))
-		return -1;
+	#ifdef MAX30102_100HZ
+		// sample rate 100Hz
+		if(sendOne(MAX30102_SPO2_CONFIG, MAX30102_SPO2_ADC_RGE_4096 | MAX30102_SPO2_SR_100HZ | MAX30102_LED_PW_411))
+			return -1;
+	#else 	
+		// sample rate 50Hz
+		if(sendOne(MAX30102_SPO2_CONFIG, MAX30102_SPO2_ADC_RGE_4096 | MAX30102_SPO2_SR_50HZ | MAX30102_LED_PW_411))
+			return -1;
+	#endif
 
 	/* LED 1 SETTINGS */
 	// 7.2mA
