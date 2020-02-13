@@ -51,9 +51,14 @@ void *oCV_runRecognizerTask(void *arg) {
 	cv::Mat scaledImg, faceROI, eyeROI;
 	std::vector<cv::Rect> faces;
 	std::vector<cv::Rect> eyes;
-	unsigned faces_not_found, eyes_not_found;
+	unsigned faces_not_found, eyes_not_found, kept_dir;
+	unsigned char precedent = 0;
 	unsigned char c[CAReOCV_MAX_EYES];
+	// unsigned char d[CAReOCV_MAX_EYES];
 
+	faces_not_found	= 0;
+	eyes_not_found	= 0;
+	kept_dir		= 0;
 	memset(c, 0, CAReOCV_MAX_EYES);
 
 	FILE *fp;
@@ -91,7 +96,7 @@ void *oCV_runRecognizerTask(void *arg) {
 				eyes_not_found = 0;
 				// making dark tones black and clear tones whites 
 				// cv::equalizeHist(faceROI(eyes[j]), eyeROI);
-                		cv::threshold(faceROI(eyes[j]), eyeROI, 17, 255, cv::THRESH_BINARY_INV);
+                cv::threshold(faceROI(eyes[j]), eyeROI, 17, 255, cv::THRESH_BINARY_INV);
 				int positives = 0;
 				int pos_x = 0;
 				int pos_y = 0;
@@ -135,11 +140,13 @@ void *oCV_runRecognizerTask(void *arg) {
 					if (c[j] != CAReOCV_LOOKING_LEFT && x_centroids > (29 * eyeROI.cols / 50)) 
 						c[j] = CAReOCV_LOOKING_LEFT;
 
-					if (c[j] != CAReOCV_LOOKING_RIGHT && x_centroids < (2 * eyeROI.cols / 5)) 
+					if (c[j] != CAReOCV_LOOKING_RIGHT && x_centroids < (2 * eyeROI.cols / 5))
 						c[j] = CAReOCV_LOOKING_RIGHT;
 
 					if (c[j] != CAReOCV_LOOKING_CENTER && x_centroids > (2 * eyeROI.cols / 5) && x_centroids < (29 * eyeROI.cols / 50))
 						c[j] = CAReOCV_LOOKING_CENTER;
+
+					if (d[j] != CAReOCV_LOOKING_UP && y_centroids)
 				}
 
 				if ((j % 2) == 1) {
@@ -156,6 +163,14 @@ void *oCV_runRecognizerTask(void *arg) {
 								break;
 							default: break;
 						}
+
+						if(c[j] != precedent){
+							precedent = c[j];
+							kept_dir = 0;
+						}
+					}
+					else{
+						kept_dir++;
 					}
  				}
 				// Eyes absolute position
@@ -167,10 +182,13 @@ void *oCV_runRecognizerTask(void *arg) {
 		if (faces.size() == 0) {
 			faces_not_found++;
 			eyes_not_found = 0;
+			kept_dir = 0;
 		} 
 
-		if (eyes.size() == 0)
+		if (eyes.size() == 0){
 			eyes_not_found++;
+			kept_dir = 0;
+		}
 
 		/*END EYE DETECTOR*/
 		sem_wait(&fr->detectionReady);
