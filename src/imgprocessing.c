@@ -4,6 +4,25 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <pthread.h>
 
+unsigned int findThreshold(cv::Mat frame){
+
+	unsigned int avg = 0;
+	unsigned int thresh = 0;
+
+	for(int y = 0; y < frame.rows; y++){
+		for(int x = 0; x < frame.cols; x++){
+			unsigned char value = frame.at<unsigned char>(y,x);
+			avg += value;
+		}
+	}
+
+	avg = avg / (frame.rows * frame.cols);
+	thresh = (unsigned int) main_avg / 3.1;
+
+	return thresh;
+
+}
+
 
 int initCAReOCV(int height, int width, FACERECOG_T *fr) {
 	/********* setup opencv */
@@ -54,7 +73,8 @@ void *oCV_runRecognizerTask(void *arg) {
 	unsigned faces_not_found, eyes_not_found, kept_dir;
 	unsigned char precedent = 0;
 	unsigned char c[CAReOCV_MAX_EYES];
-	// unsigned char d[CAReOCV_MAX_EYES];
+	unsigned int cal_count = 0;
+	unsigned int thresh = 0;
 
 	faces_not_found	= 0;
 	eyes_not_found	= 0;
@@ -76,7 +96,15 @@ void *oCV_runRecognizerTask(void *arg) {
 	clock_gettime(CLOCK_MONOTONIC, &t1);
 
 	while (fr->exit) {
+
 		sem_wait(fr->InFrameReady);
+
+		/*PERIODIC CALIBRATION*/
+		if(cal_count % 30 == 0){
+			thresh = findThreshold(fr->image);
+		}
+		cal_count++;
+
 		// oCV_checkFrameRate(&t1);
 		cv::resize(fr->image, scaledImg, scaledImg.size(), 0, 0, cv::INTER_LINEAR);
 		fr->face_cascade.detectMultiScale(scaledImg, faces, 1.4, 3, 0, cv::Size(100, 100), cv::Size(150, 150));
@@ -96,7 +124,7 @@ void *oCV_runRecognizerTask(void *arg) {
 				eyes_not_found = 0;
 				// making dark tones black and clear tones whites 
 				// cv::equalizeHist(faceROI(eyes[j]), eyeROI);
-                cv::threshold(faceROI(eyes[j]), eyeROI, 17, 255, cv::THRESH_BINARY_INV);
+                cv::threshold(faceROI(eyes[j]), eyeROI, thresh, 255, cv::THRESH_BINARY_INV);
 				int positives = 0;
 				int pos_x = 0;
 				int pos_y = 0;
@@ -145,8 +173,6 @@ void *oCV_runRecognizerTask(void *arg) {
 
 					if (c[j] != CAReOCV_LOOKING_CENTER && x_centroids > (2 * eyeROI.cols / 5) && x_centroids < (29 * eyeROI.cols / 50))
 						c[j] = CAReOCV_LOOKING_CENTER;
-
-					if (d[j] != CAReOCV_LOOKING_UP && y_centroids)
 				}
 
 				if ((j % 2) == 1) {
@@ -168,11 +194,16 @@ void *oCV_runRecognizerTask(void *arg) {
 							precedent = c[j];
 							kept_dir = 0;
 						}
+						else {
+							kept_dir++;
+						}
 					}
-					else{
+
+					else {
 						kept_dir++;
 					}
  				}
+
 				// Eyes absolute position
 				eyes[j].x += faces[i].x; 
 				eyes[j].y += faces[i].y; 
