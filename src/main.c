@@ -44,6 +44,7 @@ int main(int argc, char** argv) {
 	FACERECOG_T 	faceRecog;		// Face Recognizer
 	GRAPHCARE_T 	graphRes;		// shared graphical resources
 	HeartRate_t hr;					// HearRate sensor
+	FUSION_T 	fusion;				// fusion type
 
 	printf("Running...\n");
 	CamPi cam(&userdata);
@@ -74,14 +75,21 @@ int main(int argc, char** argv) {
 
 	cam.loadBuffers();
 
-	// init heart ratesensor	
+	// init heart rate sensor	
 	if (HeartRate_init(&hr) < 0) 
 		fprintf(stderr, "[error] could not init hr sensor\n");
+
+	// init fusion
+	initFusion(&fusion);
+
 
 	// init semaphores
 	sem_init(&userdata.outFrameReady, 0, 0);
 	sem_init(&faceRecog.detectionReady, 0, 1);
 	sem_init(&BLOCK_MAIN, 0, 0);
+
+	// passing semaphore from heart rate module to fusion	
+	fusion.hrReady = &hr.hrReady;
 
 	// passing semaphores from MMAL to opencv
 	faceRecog.InFrameReady = &userdata.outFrameReady;
@@ -89,23 +97,35 @@ int main(int argc, char** argv) {
 	// pasing semaphores from opencv to graphics
 	graphRes.semSharedFaces = &faceRecog.detectionReady;
 
-	if(HeartRate_runMeasure(&hr, &graphRes.heartRate) < 0) return -1;			// heart-rate thread
-	if(runGraphics(&graphRes) < 0) return -1;									// graphics threas
-	if(CAReOCV_runRecognizer(&faceRecog, &graphRes.sharedFaces) < 0) return -1;	// face recognizer thread
+	// connect fusion with graphics 
+	graphRes.fusionBuffer = &fusion.buffer; 
+
+	// THREAD
+	if(HeartRate_runMeasure(&hr, &fusion.bpm) < 0) return -1;					// heart-rate thread
+	if(CAReOCV_runRecognizer(&faceRecog, &graphRes.sharedFaces) < 0) return -1;	// recognizer thread
+	if(runFusion(&fusion) < 0) return -1;										// fusion thread 
+	if(runGraphics(&graphRes) < 0) return -1;									// graphics thread
 
 	// block the main thread (this thread)
 	sem_wait(&BLOCK_MAIN);	
-	fprintf(stderr, "\nMAIN THREAD STOPPED \n");
+	fprintf(stderr, "\nstopping threads ... \n");
 
 	// close all threads
 	cam.coronavirus();
-	fprintf(stderr, "CAM THREAD STOPPED \n");
+	fprintf(stderr, "Cam Module STOPPED\n");
+	
 	stopGraphics(&graphRes);
-	fprintf(stderr, "GRAPHCARE THREAD STOPPED \n");
+	fprintf(stderr, "Graphics STOPPED\n");
+	
 	CAReOCV_stopRecognizer(&faceRecog);
-	fprintf(stderr, "CAReOCV THREAD STOPPED \n");
+	fprintf(stderr, "Recognizer STOPPED \n");
+	
 	HeartRate_stopMeasure(&hr);
-	fprintf(stderr, "HEARTRATE THREAD STOPPED  \n");
+	fprintf(stderr, "Heart Rate  STOPPED  \n");
+	
+	fusion_stop(&fusion);
+	fprintf(stderr, "Fusion module STOPPED  \n");
+
 	return 0;
 }
 

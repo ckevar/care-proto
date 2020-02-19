@@ -17,7 +17,7 @@ unsigned int findThreshold(cv::Mat frame){
 	}
 
 	avg = avg / (frame.rows * frame.cols);
-	thresh = (unsigned int) main_avg / 3.1;
+	thresh = (unsigned int) avg / 3.1;
 
 	return thresh;
 

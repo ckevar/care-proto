@@ -4,6 +4,7 @@
 #include "max30102.h"
 #include "fcomplex.h"
 #include <pthread.h>
+#include <semaphore.h>
 
 #define LOW_HR	0.6666 	// Lowest rate in Hz = 40 bpm / 60s
 #define HIGH_HR 3.3333 	// Highest rate in Hz = 200 bpm / 60s
@@ -14,13 +15,6 @@
 	#define N_HR 		2048 	// frequency points in the FFT
 	#define EXP_HR 		11		// = log2(N)
 	#define FS_HR 		100	// Sampling frequency of the sensor
-#else
-	#define N_HR 		1024 	// frequency points in the FFT
-	#define EXP_HR 		10 		// = log2(N)	
-	#define FS_HR 		50
-#endif
-
-#ifdef MAX30102_100HZ
 	#define RELATIVE_ACTIVATION_TIME 9 // it should be a period of 10 ms, becasue
 									// the sampling frequency is 100Hz. However,
 									// based in the fact that the sensor wont be read
@@ -28,8 +22,13 @@
 									// the funtion 1 ms ealier and do a busy-wait until
 									// has the data ready. From experiments, the data 
 									// is ready from 9.41 to 10.51 ms.
+
 #else
+	#define N_HR 		1024 	// frequency points in the FFT
+	#define EXP_HR 		10 		// = log2(N)	
+	#define FS_HR 		50
 	#define RELATIVE_ACTIVATION_TIME 19
+
 #endif
 
 #define SIGNAL_THRESHOLD 140000	// Experimental based, it might change based on the sking color
@@ -38,7 +37,10 @@
 
 typedef struct {
 	MAX30102 dev;
+
 	double *bpm;
+	sem_t	hrReady;
+
 	double peak;
 	pthread_t HRThreadID;
 	pthread_attr_t HRThreadAttr;

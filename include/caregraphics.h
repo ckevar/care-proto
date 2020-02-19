@@ -5,6 +5,8 @@
 #include "imgprocessing.h"
 #include "vgfont.h" // for display text on screen
 
+#include "fusion.h"
+
 #include <opencv2/core/types_c.h>
 
 #define GRAPHICS_PRIORITY	40
@@ -18,7 +20,8 @@ typedef struct {
 	// std::vector<cv::Rect> 	sharedFaces;
 	RECOGBUFFER_T			sharedFaces;
 	sem_t 					*semSharedFaces;
-	double 					heartRate;
+	FUSIONBUFFER_T 			*fusionBuffer;
+	// double 					*heartRate;
 	pthread_t graphicsTID;
 	pthread_attr_t graphicsTAttr;
 	unsigned exit;

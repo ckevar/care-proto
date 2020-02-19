@@ -72,10 +72,13 @@ void *runMeasureTask(void *arg) {
 		} else 									// no finger on sensor
 			*hr->bpm = -1;
 
+		sem_post(&hr->hrReady);
+
 		clock_gettime(CLOCK_MONOTONIC, &now);
 		if(timecmp(now, t) > 0) fprintf(stderr, "[warning] deadline miss at sensor\n");
 		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
 	}
+	
 	hr->dev.terminate();
 	pthread_exit(NULL);
 }
@@ -95,6 +98,7 @@ int HeartRate_init(HeartRate_t *hr) {
 		fprintf(stderr, "[error] settings\n");
 		return -1;
 	}
+	sem_init(&hr->hrReady, 0, 0);
 	return 0;
 }
 

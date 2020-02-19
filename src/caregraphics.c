@@ -4,6 +4,7 @@
 #include "bcm_host.h"
 #include <errno.h>
 
+
 GRAPHICS_RESOURCE_HANDLE img_overlay;
 
 uint32_t DISPLAYSIZE_WH[2]; 	// display resolution
@@ -81,6 +82,22 @@ void look_dir2Text(unsigned char *c, char *msg, uint32_t *fontColor) {
 	}
 }
 
+int driverState2Text(DRIVER_STATE_T ds, char *msg, uint32_t *fontColor) {
+	if (ds == DRIVER_WARNING) {
+		sprintf(msg, "WARNING");
+		*fontColor = GRAPHICS_RGBA32_YELLOW;
+		return 1;
+	} else if (ds == DRIVER_STOP) {
+		sprintf(msg, "STOP\nWellness Affected");
+		*fontColor = GRAPHICS_RGBA32_RED;
+		return 1;
+	}
+	return 0;
+}
+
+
+
+
 void *graphicTask(void *arg) {
 	GRAPHCARE_T *gr = (GRAPHCARE_T *) arg;
 	struct timespec t;
@@ -89,7 +106,9 @@ void *graphicTask(void *arg) {
 	char msgHR[25], msgLOOKDIR[25];
 	uint32_t fontHRColor;
 	uint32_t fontLOOKColor;
+	uint32_t rc;
 	double bpm;
+	DRIVER_STATE_T driverState;
 	std::vector<cv::Rect> localFaces;
 	fontSize = 15;
 
@@ -109,9 +128,12 @@ void *graphicTask(void *arg) {
 			}
 		}
 
-		bpm = gr->heartRate;
+		bpm = *gr->fusionBuffer->bpm;
+		driverState = gr->fusionBuffer->driverState;
+
 		bpm2Text(bpm, msgHR, &fontHRColor);
-		look_dir2Text(look_dir, msgLOOKDIR, &fontLOOKColor);
+		rc = driverState2Text(driverState, msgLOOKDIR, &fontLOOKColor);
+		// look_dir2Text(look_dir, msgLOOKDIR, &fontLOOKColor);
 
     	graphics_resource_render_text_ext(img_overlay, 0, 160,
 			GRAPHICS_RESOURCE_WIDTH,
@@ -120,12 +142,13 @@ void *graphicTask(void *arg) {
 	  		GRAPHICS_RGBA32(0, 0, 0, 0x00), /* bg */
 			msgHR, strlen(msgHR), fontSize);
 
-    	graphics_resource_render_text_ext(img_overlay, 0, 120,
-			GRAPHICS_RESOURCE_WIDTH,
-			GRAPHICS_RESOURCE_HEIGHT,
-			fontLOOKColor, /* fg */
-	  		GRAPHICS_RGBA32(0, 0, 0, 0x00), /* bg */
-			msgLOOKDIR, strlen(msgLOOKDIR), fontSize);
+    	if (rc) 
+    		graphics_resource_render_text_ext(img_overlay, 0, 120,
+    			GRAPHICS_RESOURCE_WIDTH,
+    			GRAPHICS_RESOURCE_HEIGHT,
+    			fontLOOKColor, /* fg */
+    			GRAPHICS_RGBA32(0, 0, 0, 0x00), /* bg */
+    			msgLOOKDIR, strlen(msgLOOKDIR), fontSize);
 		
     	graphics_update_displayed_resource(img_overlay, 0, 0, 0, 0);
 		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
