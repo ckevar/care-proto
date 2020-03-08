@@ -10,18 +10,25 @@
 #include <stdio.h>
 
 static void video_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) {
-	static int frame_count = 0;
-	static int frame_post_count = 0;
-	static struct timespec t1;
-	struct timespec t2;
+	
+	#ifdef MMAL_VIDEO_CHECK_FRAMERATE
+		static struct timespec t1;
+		struct timespec t2;
+		static int frame_count = 0;
+		static int frame_post_count = 0;
+	#endif 
+
+
+
 	MMAL_BUFFER_HEADER_T *new_buffer;
 	PORTUSERDATA_T * userdata = (PORTUSERDATA_T *) port->userdata;
 	MMAL_POOL_T *pool = userdata->camVideoPortPool;
 
-	if (frame_count == 0)
-		clock_gettime(CLOCK_MONOTONIC, &t1);
-
-	frame_count++;
+	#ifdef MMAL_VIDEO_CHECK_FRAMERATE
+		if (frame_count == 0)
+			clock_gettime(CLOCK_MONOTONIC, &t1);
+		frame_count++;
+	#endif
 
 	mmal_buffer_header_mem_lock(buffer);
 	memcpy(userdata->image, buffer->data, userdata->video_width * userdata->video_height);
@@ -29,23 +36,28 @@ static void video_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffe
 	
 	if (sem_trywait(&userdata->outFrameReady) < 0) {
 		sem_post(&userdata->outFrameReady);
-		frame_post_count++;
+		
+		#ifdef MMAL_VIDEO_CHECK_FRAMERATE
+			frame_post_count++;
+		#endif
 	}
 
-	if (frame_count % 10 == 0) {
-		// print framerate every n frame
-		clock_gettime(CLOCK_MONOTONIC, &t2);
-		float d = (t2.tv_sec + t2.tv_nsec / 1000000000.0) - (t1.tv_sec + t1.tv_nsec / 1000000000.0);
-		float fps = 0.0;
+	#ifdef MMAL_VIDEO_CHECK_FRAMERATE
+		if (frame_count % 10 == 0) {
+			// print framerate every n frame
+			clock_gettime(CLOCK_MONOTONIC, &t2);
+			float d = (t2.tv_sec + t2.tv_nsec / 1000000000.0) - (t1.tv_sec + t1.tv_nsec / 1000000000.0);
+			float fps = 0.0;
 
-		if (d > 0) {
-			fps = frame_count / d;
-		} else {
-			fps = frame_count;
+			if (d > 0) {
+				fps = frame_count / d;
+			} else {
+				fps = frame_count;
+			}
+			userdata->video_fps = fps;
+			printf("  Frame = %d, Frame Post %d, Framerate = %.0f fps \n", frame_count, frame_post_count, fps);
 		}
-		userdata->video_fps = fps;
-		// printf("  Frame = %d, Frame Post %d, Framerate = %.0f fps \n", frame_count, frame_post_count, fps);
-	}
+	#endif
 
 	mmal_buffer_header_release(buffer);
 	// and send one back to the port (if still open)

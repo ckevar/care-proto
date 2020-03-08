@@ -115,6 +115,10 @@ int MAX30102::readFifo(unsigned *redLED, unsigned *irLED) {
 	return 0;
 }
 
+void MAX30102::shutdown() {
+	sendOne(MAX30102_MODE_CONFIG, MAX30102_MODE_SHDN);	// reset
+}
+
 void MAX30102::checkNewFifoData() {
 	dataReady = 0;
 

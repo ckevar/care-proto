@@ -112,6 +112,7 @@ public:
 		I2CDev(MAX30102_ADDRESS) {}
 
 	void reset();
+	void shutdown();
 	int settings();
 	int readFifo();
 	void checkNewFifoData();

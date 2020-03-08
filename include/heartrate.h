@@ -6,6 +6,7 @@
 #include <pthread.h>
 #include <semaphore.h>
 
+#define HR_PRIORITY	80 		// priority task
 #define LOW_HR	0.6666 	// Lowest rate in Hz = 40 bpm / 60s
 #define HIGH_HR 3.3333 	// Highest rate in Hz = 200 bpm / 60s
 
@@ -33,7 +34,6 @@
 
 #define SIGNAL_THRESHOLD 140000	// Experimental based, it might change based on the sking color
 								// over this value a finger is connected.
-#define HR_PRIORITY	50 		// priority task
 
 typedef struct {
 	MAX30102 dev;

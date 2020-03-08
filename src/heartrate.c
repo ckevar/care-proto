@@ -36,8 +36,8 @@ void *runMeasureTask(void *arg) {
 	*hr->bpm = 0.0;
 
 	#ifdef LOG_MAX30102_FREQOUT
-		FILE *fp;
-		fp = fopen("freqMAX30102.dat", "w");
+		FILE *fphr;
+		fphr = fopen("freqMAX30102.dat", "w");
 	#endif
 
 	// precomputes the twiddle factor for FFT
@@ -59,7 +59,7 @@ void *runMeasureTask(void *arg) {
 		searchMax(Y, hr, &freqIndex);
 
 		#ifdef LOG_MAX30102_FREQOUT
-			fprintf(fp, "%d\n", freqIndex);
+			fprintf(fphr, "%d\n", freqIndex);
 		#endif
 
 		if (redLED > SIGNAL_THRESHOLD) {		// finger on sesor
@@ -78,7 +78,7 @@ void *runMeasureTask(void *arg) {
 		if(timecmp(now, t) > 0) fprintf(stderr, "[warning] deadline miss at sensor\n");
 		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);
 	}
-	
+	hr->dev.shutdown();
 	hr->dev.terminate();
 	pthread_exit(NULL);
 }

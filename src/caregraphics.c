@@ -34,8 +34,8 @@ void initGraphics(PORTUSERDATA_T *usr, GRAPHCARE_T *gr) {
 void drawSquareOnFace(GRAPHICS_RESOURCE_HANDLE *img, CvRect *r) {
 	// graphics_resource_fill(*img, r->x * SCALE_WH[0], r->y * SCALE_WH[1], r->width * SCALE_WH[0], r->height * SCALE_WH[1], GRAPHICS_RGBA32(0xff, 0, 0, 0x88));
 	// graphics_resource_fill(*img, r->x * SCALE_WH[0] + 8, r->y * SCALE_WH[1] + 8, r->width * SCALE_WH[0] - 16 , r->height * SCALE_WH[1] - 16, GRAPHICS_RGBA32(0, 0, 0, 0x00));
-	graphics_resource_fill(*img, r->x, r->y, r->width, r->height, GRAPHICS_RGBA32(0xff, 0, 0, 0x88));
-	graphics_resource_fill(*img, r->x + 4, r->y + 4, r->width - 8, r->height - 8, GRAPHICS_RGBA32(0, 0, 0, 0x00));	
+	graphics_resource_fill(*img, r->x, r->y, r->width, r->height, GRAPHICS_RGBA32(0, 0, 0xff, 0x88));
+	// graphics_resource_fill(*img, r->x + 1, r->y + 1, r->width - 2, r->height - 2, GRAPHICS_RGBA32(0, 0, 0, 0x00));	
 }
 
 void bpm2Text(double bpm, char *text, uint32_t *fontHRColor) {
@@ -62,14 +62,11 @@ void bpm2Text(double bpm, char *text, uint32_t *fontHRColor) {
 void look_dir2Text(unsigned char *c, char *msg, uint32_t *fontColor) {
 	if (c[0] == c[1] && c[0]) {
 		switch (c[0]) {
-			case CAReOCV_LOOKING_LEFT:
+			case CAReOCV_LOOKING_AWAY:
 				sprintf(msg, "LOOSING ATTENTION LEFT");
 				*fontColor = GRAPHICS_RGBA32_RED;
 				break;
-			case CAReOCV_LOOKING_RIGHT:
-				sprintf(msg, "LOOSING ATTENTION RIGHT");
-				*fontColor = GRAPHICS_RGBA32_RED;
-				break;
+				
 			case CAReOCV_LOOKING_CENTER:
 				sprintf(msg, "FOCUS ON THE ROAD");
 				*fontColor = GRAPHICS_RGBA32(0x00, 0xff, 0x00, 0xff);
@@ -95,20 +92,18 @@ int driverState2Text(DRIVER_STATE_T ds, char *msg, uint32_t *fontColor) {
 	return 0;
 }
 
-
-
-
 void *graphicTask(void *arg) {
 	GRAPHCARE_T *gr = (GRAPHCARE_T *) arg;
 	struct timespec t;
 	unsigned i, fontSize;
-	unsigned char look_dir[CAReOCV_MAX_EYES];
+	// unsigned char look_dir[CAReOCV_MAX_EYES];
 	char msgHR[25], msgLOOKDIR[25];
 	uint32_t fontHRColor;
 	uint32_t fontLOOKColor;
 	uint32_t rc;
 	double bpm;
 	DRIVER_STATE_T driverState;
+	EYESFOUNDSTATE_T eyeState;
 	std::vector<cv::Rect> localFaces;
 	fontSize = 15;
 
@@ -120,11 +115,13 @@ void *graphicTask(void *arg) {
 		
 		if(sem_trywait(gr->semSharedFaces) == 0) {
 			localFaces = gr->sharedFaces.rect;
-			memcpy(look_dir, gr->sharedFaces.look_dir, localFaces.size());
+			eyeState = gr->sharedFaces.state; 
+			// memcpy(look_dir, gr->sharedFaces.look_dir, localFaces.size());
 			sem_post(gr->semSharedFaces);
-
-			for (i = 0; i < localFaces.size(); i++) {
-				drawSquareOnFace(&img_overlay, (CvRect *)&localFaces[i]);
+			if (eyeState == EYES_FOUND) {
+				for (i = 0; i < localFaces.size(); i++) {
+					drawSquareOnFace(&img_overlay, (CvRect *)&localFaces[i]);
+				}
 			}
 		}
 

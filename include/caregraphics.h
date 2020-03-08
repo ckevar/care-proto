@@ -9,7 +9,7 @@
 
 #include <opencv2/core/types_c.h>
 
-#define GRAPHICS_PRIORITY	40
+#define GRAPHICS_PRIORITY	30
 #define GRAPHICS_RGBA32_RED 	GRAPHICS_RGBA32(0x00, 0x00, 0xff, 0xff)
 #define GRAPHICS_RGBA32_YELLOW 	GRAPHICS_RGBA32(0x00, 0xff, 0xff, 0xff)
 

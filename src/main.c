@@ -46,7 +46,7 @@ int main(int argc, char** argv) {
 	HeartRate_t hr;					// HearRate sensor
 	FUSION_T 	fusion;				// fusion type
 
-	printf("Running...\n");
+	fprintf(stderr, "Running...\n");
 	CamPi cam(&userdata);
 
 	bcm_host_init();  				// init the bcm
@@ -86,6 +86,7 @@ int main(int argc, char** argv) {
 	// init semaphores
 	sem_init(&userdata.outFrameReady, 0, 0);
 	sem_init(&faceRecog.detectionReady, 0, 1);
+	sem_init(&faceRecog.positionReady, 0, 1);
 	sem_init(&BLOCK_MAIN, 0, 0);
 
 	// passing semaphore from heart rate module to fusion	
@@ -97,8 +98,12 @@ int main(int argc, char** argv) {
 	// pasing semaphores from opencv to graphics
 	graphRes.semSharedFaces = &faceRecog.detectionReady;
 
+	// passing semaphores
+	fusion.eyePosReady = &faceRecog.positionReady;
+
 	// connect fusion with graphics 
 	graphRes.fusionBuffer = &fusion.buffer; 
+	faceRecog.bufferPos = &fusion.eyes;
 
 	// THREAD
 	if(HeartRate_runMeasure(&hr, &fusion.bpm) < 0) return -1;					// heart-rate thread
