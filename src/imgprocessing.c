@@ -179,10 +179,10 @@ void computeEyeBB(std::vector<cv::Point2f> *landmark, cv::Rect *eye, EYEINDEX_T 
 	if (eye->height == 0) eye->height = 1;
 }
 
-void estimatePupilPosition(cv::Mat *scaledImg, std::vector<cv::Point2f> *landmark, cv::Rect *eye, unsigned char *thresh, double *centroids, EYEINDEX_T *eyeI, double *posxy) {
-	static double coeff[] = {0.27473, 0.24176, 0.20879, 0.17582, 0.14286, 0.10989, 0.07692, 0.04396, 0.01099, -0.02198, -0.05495, -0.08791, -0.12088};
-	static double pxy[2 * 13];
-	double pos_x, pos_y;
+int computePupilPosition(cv::Mat *scaledImg, std::vector<cv::Point2f> *landmark, cv::Rect *eye, unsigned char *thresh, double *centroids, EYEINDEX_T *eyeI, double *posxy) {
+	int pos_x, pos_y;
+	double posd_x;
+	// double posd_y;
 	int positives;
 	unsigned minVal = 255;
 
@@ -194,7 +194,6 @@ void estimatePupilPosition(cv::Mat *scaledImg, std::vector<cv::Point2f> *landmar
 				/ (landmark->at(eyeI->tl1).x - landmark->at(eyeI->c).x);
 	double q2 = landmark->at(eyeI->c).y - m2 * (landmark->at(eyeI->c).x);
 
-	memcpy(pxy + 2, posxy, 2 * 12 * sizeof(double));
 	pos_x = 0;
 	pos_y = 0;
 	positives = 0;
@@ -235,41 +234,67 @@ void estimatePupilPosition(cv::Mat *scaledImg, std::vector<cv::Point2f> *landmar
 
 	if (positives) {
 
-		pxy[0] = pos_x / (double) positives;
-		pxy[1] = pos_y / (double) positives;
+		posd_x = (double) pos_x / (double) positives;
+		// posd_y = (double) pos_y / (double) positives;
 
-		pos_x = 0.0;
-		pos_y = 0.0;
+		// *centroids = (double) pos_x / (double) positives;
+		*(centroids + 1) = (double) pos_y / (double) positives;
 
-		for (int i = 0; i < 2 * 13; i += 2) {
-			int j = i / 2;
-			pos_x += pxy[i] * coeff[j];
-			pos_y += pxy[i + 1] * coeff[j];
-		}
+		*centroids = (posd_x - eye->x) / (double) eye->width;
+		// *(centroids + 1) = (posd_y - eye->y) / (double) eye->height;
+		return 0;
 
-		*centroids = (pos_x - eye->x) / (double) eye->width;
-		*(centroids + 1) = (pos_y - eye->y) / (double) eye->height;
-
-		eye->x = pos_x - eye->height / 2;
-		eye->y = pos_y - eye->height / 2;
-		eye->width = eye->height;
-
-		memcpy(posxy, pxy, 2 * 13 * sizeof(double));
-		// #ifdef CHECK_EYE_DIRECTION
-			// fprintf(fp2, "%f %f\n", centroids[0], centroids[1]);
-			// fprintf(fp2, "%f %f\n", centroids[0], centroids[1]);
-			// if(centroids[0] > 0.55) {
-			// 	fprintf(stderr, "over 0.55 left?\n");
-			// } else if (centroids[0] < 0.4) {
-			// 	fprintf(stderr, "below 0.4 right?\n");
-			// } else {
-			// 	fprintf(stderr, "CENTER\n");
-			// }
-		// #endif
 	}
+	return 1;
 }
 
-	void *oCV_runRecognizerTask3(void *arg) {
+
+void estimateCentroid(double *centroids, std::vector<cv::Rect> *eye, int rcL, int rcR) {
+	// Initial vals
+	static double Pk = 1.0;
+	static double Xk = 0.5;
+	// Covariance Matrix
+	static double R11 = 0.0010;
+	static double R22 = 0.0015;
+	static double R12 = 0.0001;
+	static double R21 = 0.0001;
+	// Pre-computed vals
+	static double R22_R21 = R22 - R21;
+	static double R11_R12 = R11 - R12;
+
+	if (rcR) 
+		centroids[2] = centroids[0];
+	if (rcL)
+		centroids[0] = centroids[2];
+
+	// Update
+	double detM = Pk * (R22_R21 + R11_R12) + R11*R22 - R12*R21;
+	double Gk0 = Pk * R22_R21 / detM;
+	double Gk1 = Pk * R11_R12 / detM;
+	Xk = Xk + Gk0 * (centroids[0] - Xk) + Gk1 * (centroids[2] - Xk);
+	Pk = (1 - Gk0 - Gk1) * Pk;
+	// Predict
+	centroids[0] = centroids[2] = Xk;
+	Pk = Pk + 0.0005;
+
+	double posd_x = Xk * ((double) eye->at(0).width) + eye->at(0).x;
+
+	eye->at(0).x = posd_x - eye->at(0).height / 2;
+	eye->at(0).y = centroids[1] - eye->at(0).height / 2; // this is because there's no kalman for y axis
+	centroids[1] = (centroids[1] - eye->at(0).y) / eye->at(0).height;
+	eye->at(0).width = eye->at(0).height;
+
+	posd_x = Xk * ((double) eye->at(1).width) + eye->at(1).x;
+	eye->at(1).x = posd_x - eye->at(1).height / 2;
+	eye->at(1).y = centroids[3] - eye->at(1).height / 2;
+	centroids[3] = (centroids[3] - eye->at(1).y) / eye->at(1).height;
+
+	eye->at(1).width = eye->at(1).height;
+
+}
+
+
+void *oCV_runRecognizerTask3(void *arg) {
 	FACERECOG_T *fr = (FACERECOG_T *) arg;
 	cv::Mat scaledImg, secondImg;
 	std::vector<cv::Rect> faces;
@@ -319,6 +344,11 @@ void estimatePupilPosition(cv::Mat *scaledImg, std::vector<cv::Point2f> *landmar
 		fp2 = fopen("eyesDirection.dat", "w");
 	#endif
 
+	#ifdef CHECK_ET_OVERALL
+		struct timespec overall_begin;
+		struct timespec overall_end;
+	#endif
+
 	#ifdef CHECK_ET_FIT_DETECTION
 		struct timespec ftt_begin;
 		struct timespec ftt_end;
@@ -337,11 +367,16 @@ void estimatePupilPosition(cv::Mat *scaledImg, std::vector<cv::Point2f> *landmar
 
 	while(fr->exit) {
 		sem_wait(fr->InFrameReady);			// waits for the frame stream
-		cv::resize(fr->image, scaledImg, scaledImg.size(), 0, 0, cv::INTER_NEAREST);
+		
+		#ifdef CHECK_ET_OVERALL
+			clock_gettime(CLOCK_MONOTONIC, &overall_begin);
+		#endif
 
 		#ifdef IMG_PROCESSING_CHECK_FRAMERATE
 			oCV_checkFrameRate(&t1);
 		#endif
+		cv::resize(fr->image, scaledImg, scaledImg.size(), 0, 0, cv::INTER_NEAREST);
+
 
 		#ifdef CHECK_ET_FACE_DETECTION
 			clock_gettime(CLOCK_MONOTONIC, &ft_begin);
@@ -370,12 +405,12 @@ void estimatePupilPosition(cv::Mat *scaledImg, std::vector<cv::Point2f> *landmar
 			
 			faces[0].x += tmpROI.x;
 			faces[0].y += tmpROI.y;
+			prevHCFace = 1;
 
 			#ifdef CHECK_ET_FIT_DETECTION
 				clock_gettime(CLOCK_MONOTONIC, &ftt_begin);
 			#endif 
 			success = facemark->fit(scaledImg, faces, landmarks);
-			prevHCFace = 1;
 			#ifdef CHECK_ET_FIT_DETECTION
 				clock_gettime(CLOCK_MONOTONIC, &ftt_end);
 				float tc2 = (ftt_end.tv_sec + ftt_end.tv_nsec / 1000000000.0) - (ftt_begin.tv_sec + ftt_begin.tv_nsec / 1000000000.0);
@@ -390,14 +425,20 @@ void estimatePupilPosition(cv::Mat *scaledImg, std::vector<cv::Point2f> *landmar
 					#ifdef PRINT_EYE_ROI
 						fprintf(fp, "imgL%d = [", imageEyeIndex);
 					#endif
-					estimatePupilPosition(&scaledImg, &landmarks[0], &eyes[eyeL.i], &thresh[eyeL.i], centroids, &eyeL, posxyL);
+					int rcL = computePupilPosition(&scaledImg, &landmarks[0], &eyes[eyeL.i],
+						&thresh[eyeL.i], centroids, &eyeL, posxyL);
 				
 					#ifdef PRINT_EYE_ROI
 						fprintf(fp, "imgR%d = [", imageEyeIndex);
 						imageEyeIndex++;
 					#endif
-					estimatePupilPosition(&scaledImg, &landmarks[0], &eyes[eyeR.i], &thresh[eyeR.i], centroids + 2, &eyeR, posxyR);
+					int rcR = computePupilPosition(&scaledImg, &landmarks[0], &eyes[eyeR.i],
+						&thresh[eyeR.i], centroids + 2, &eyeR, posxyR);
 					
+
+					if (!rcL || !rcR) 
+						estimateCentroid(centroids, &eyes, rcL, rcR);
+
 					#ifdef CHECK_EYE_DIRECTION
 						fprintf(fp2, "%f %f %f %f\n", centroids[0], centroids[1], centroids[2], centroids[3]);
 					#endif
@@ -460,6 +501,12 @@ void estimatePupilPosition(cv::Mat *scaledImg, std::vector<cv::Point2f> *landmar
 			fr->bufferPos->size = 0;
 			sem_post(&fr->positionReady);
 		}
+
+		#ifdef CHECK_ET_OVERALL
+			clock_gettime(CLOCK_MONOTONIC, &overall_end);
+			float oad = (overall_end.tv_sec + overall_end.tv_nsec / 1000000000.0) - (overall_begin.tv_sec + overall_begin.tv_nsec / 1000000000.0);
+			printf("oa ET %f ms\n", oad * 1000);		
+		#endif
 
 	}
 	pthread_exit(NULL);

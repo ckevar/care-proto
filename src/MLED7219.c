@@ -17,7 +17,7 @@ unsigned char CH[] = {
 	0b100000, 0b010000, 0b001000, 0b001000, 0b001000, 0b010000, 0b100000, 0b000000, // ) 
 	0b000000, 0b001000, 0b001000, 0b111110, 0b010100, 0b100010, 0b000000, 0b000000, // * 
 	0b000000, 0b001000, 0b001000, 0b111110, 0b001000, 0b001000, 0b000000, 0b000000, // + 
-	0b000000, 0b000000, 0b000000, 0b000000, 0b110000, 0b110000, 0b010000, 0b100000, // 0, 
+	0b000000, 0b000000, 0b000000, 0b000000, 0b110000, 0b110000, 0b010000, 0b100000, // , 
 	0b000000, 0b000000, 0b000000, 0b111100, 0b000000, 0b000000, 0b000000, 0b000000, // - 
 	0b000000, 0b000000, 0b000000, 0b000000, 0b000000, 0b110000, 0b110000, 0b000000, // . 
 	0b000100, 0b001000, 0b001000, 0b010000, 0b010000, 0b100000, 0b100000, 0b000000, // / 
@@ -139,12 +139,10 @@ int MLED7219::setBuff(unsigned char *ledMatrix) {
 		buff[0] = i + 1;
 		buff[1] = 0;
 		for (int j = 0; j < 8; ++j) {
-			printf("%d ", ledMatrix[i * 8 + j]);
 			buff[1] <<= 1;
 			if(ledMatrix[i * 8 + j])
 				buff[1] |= 1;
 		}
-		printf("%d \n", buff[1]);
 		if(writeSPI(buff, 2) < 0) {
 			fprintf(stderr, "[error] while writing setbuff\n");
 			return -1;
@@ -222,14 +220,14 @@ int MLED7219::smile() {
 
 int MLED7219::displayStopSymbol() {
 	unsigned char mleds[8] = {
-		0b00000001, 
-		0b00111010, 
+		0b00011001, 
+		0b00100110, 
 		0b01000110, 
-		0b10001001, 
-		0b10010001, 
+		0b01001010, 
+		0b01010010, 
 		0b01100010, 
-		0b01111000, 
-		0b10000000, // 0 
+		0b01100100, 
+		0b10011000, 
 	};
 	memcpy(led, mleds, 8);
 	return displayBuffer(0, 8);
@@ -297,7 +295,10 @@ int MLED7219::randomBuffFail(unsigned char *ledMatrix) {
 int MLED7219::intensityBreath() {
 	// to be called as part of iteration
 	static unsigned char i = 0;
-	static unsigned char beat[] = {3, 3, 7, 11, 15, 13, 10, 9, 10, 12, 15, 12, 9, 7, 5, 3};
+	// static unsigned char beat[] = {3, 3, 7, 11, 15, 13, 10, 9, 10, 12, 15, 12, 9, 7, 5, 3};
+	// static unsigned char beat[] = {3, 2, 3, 5, 7, 9, 11, 13, 15, 15, 13, 11, 10, 9, 9, 9, 10, 11, 12, 14, 15, 14, 12, 10, 9, 8, 7, 6, 5, 4, 3};
+    static unsigned char beat[] = {3, 2, 2, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 15, 15, 14, 13, 12, 11, 11, 10, 10, 9, 9, 9, 9, 9, 10, 10, 10, 11, 11, 12, 13, 14, 15, 15, 15, 14, 13, 12, 11, 10, 10, 9, 8, 8, 7, 7, 7, 6, 6, 5, 4, 4, 3, 3};
+
 	i++;
 	if (i > (sizeof(beat) + 1)) i = 0;
 	return setIntensity(beat[i]);

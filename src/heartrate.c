@@ -5,17 +5,43 @@
 #include <errno.h>
 #include <stdio.h>
 #include <cstring>
+#include <cstdlib>
+
+#ifdef SAVE_HR_SPECTRUM
+	FILE *fdhrs;
+#endif
 
 void searchMax(complex *y, HeartRate_t *hr, unsigned *dummy) {
 	*dummy = 0;
 	hr->peak = 0;
 	double bin;
+	#ifdef SAVE_HR_SPECTRUM
+		fprintf(fdhrs, "%f ", y[0].re * y[0].re + y[0].im * y[0].im);
+	#endif
 	for (unsigned k = hr->FLi; k < hr->FHi; k++) {
 		bin = y[k].re * y[k].re + y[k].im * y[k].im;
+		
+		#ifdef SAVE_HR_SPECTRUM
+			fprintf(fdhrs, "%f ", bin);
+		#endif 
+
 		if (bin > hr->peak) {
 			hr->peak = bin;
 			*dummy = k;
 		}
+	}
+
+	#ifdef SAVE_HR_SPECTRUM
+		fprintf(fdhrs, "\n");
+	#endif
+}
+
+void fillwithRandom(complex *x, size_t length) {
+	for (size_t i = 0; i < length; ++i) {
+		x[i].re = 1;
+		// x[i].re =  rand() % 100 - 50;
+		// x[i].re =  rand() % (SIGNAL_THRESHOLD + 1) + SIGNAL_THRESHOLD;
+		x[i].im = 0.0;
 	}
 }
 
@@ -35,9 +61,18 @@ void *runMeasureTask(void *arg) {
 	kalman.setP0(14);
 	*hr->bpm = 0.0;
 
+	//fillwithRandom(X, N_HR);
+
+	time_t tt;
+	srand((unsigned)time(&tt));;
+
 	#ifdef LOG_MAX30102_FREQOUT
 		FILE *fphr;
 		fphr = fopen("freqMAX30102.dat", "w");
+	#endif
+
+	#ifdef SAVE_HR_SPECTRUM
+		fdhrs = fopen("HR_spectrum.dat", "w");
 	#endif
 
 	// precomputes the twiddle factor for FFT
@@ -48,21 +83,23 @@ void *runMeasureTask(void *arg) {
 		time_add_ms(&t, RELATIVE_ACTIVATION_TIME);
 
 		hr->dev.readFifo(&redLED, &dummy);
-		X[j % N_HR].re = redLED;
-		X[j % N_HR].im = 0.0;
-		j++;
-
-		memcpy(Y, X, sizeof(complex) * N_HR);
-		bit_rev(Y, EXP_HR);
-		dft(Y, EXP_HR, W);
-
-		searchMax(Y, hr, &freqIndex);
-
-		#ifdef LOG_MAX30102_FREQOUT
-			fprintf(fphr, "%d\n", freqIndex);
-		#endif
 
 		if (redLED > SIGNAL_THRESHOLD) {		// finger on sesor
+
+			X[j % N_HR].re = redLED;
+			X[j % N_HR].im = 0.0;
+			j++;
+
+			memcpy(Y, X, sizeof(complex) * N_HR);
+			bit_rev(Y, EXP_HR);
+			dft(Y, EXP_HR, W);
+
+			searchMax(Y, hr, &freqIndex);
+
+			#ifdef LOG_MAX30102_FREQOUT
+				fprintf(fphr, "%d\n", freqIndex);
+			#endif
+
 			if (hr->peak < 5000)	{			// heart rate acceptable value
 				/* do I need a protection for a single variable? */
 				// *hr->bpm = kalman.update(freqIndex * FS_HR * 60.0 / N_HR);

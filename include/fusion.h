@@ -12,11 +12,12 @@
 #define FACE_NOT_FOUND_THRESHOLD 3
 
 typedef enum {
-	EYES_AWAY,		// eyes from the road
+	EYES_AWAY_LEFT,	// eyes from the road
+	EYES_AWAY_RIGHT,// eyes from the road
 	EYES_FOCUS,		// eyes on the road
 	EYES_CLOSED,	// face detect but eyes
-	FACE_ERROR
-} EYES_STATE_T;
+	FACE_ERROR,
+} GAZE_STATE_T;
 
 typedef enum {
 	HR_LOW = 55,	// below 55 bpm
@@ -26,7 +27,7 @@ typedef enum {
 
 typedef enum {
 	HRV_BELOW25 = 25,	// below 25% over normal bpm
-	HRV_BTWN25_30,	// between 25% and 30% over the normal bpm
+	HRV_BTWN25_30,		// between 25% and 30% over the normal bpm
 	HRV_OVER30 = 30		// over 30% of bpm
 } HRV_STATE_T;
 
@@ -39,6 +40,7 @@ typedef enum {
 
 typedef struct {
 	DRIVER_STATE_T driverState;
+	GAZE_STATE_T gazeState;
 	double *bpm;
 } FUSIONBUFFER_T;
 

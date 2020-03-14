@@ -32,10 +32,7 @@ void initGraphics(PORTUSERDATA_T *usr, GRAPHCARE_T *gr) {
 }
 
 void drawSquareOnFace(GRAPHICS_RESOURCE_HANDLE *img, CvRect *r) {
-	// graphics_resource_fill(*img, r->x * SCALE_WH[0], r->y * SCALE_WH[1], r->width * SCALE_WH[0], r->height * SCALE_WH[1], GRAPHICS_RGBA32(0xff, 0, 0, 0x88));
-	// graphics_resource_fill(*img, r->x * SCALE_WH[0] + 8, r->y * SCALE_WH[1] + 8, r->width * SCALE_WH[0] - 16 , r->height * SCALE_WH[1] - 16, GRAPHICS_RGBA32(0, 0, 0, 0x00));
 	graphics_resource_fill(*img, r->x, r->y, r->width, r->height, GRAPHICS_RGBA32(0, 0, 0xff, 0x88));
-	// graphics_resource_fill(*img, r->x + 1, r->y + 1, r->width - 2, r->height - 2, GRAPHICS_RGBA32(0, 0, 0, 0x00));	
 }
 
 void bpm2Text(double bpm, char *text, uint32_t *fontHRColor) {
@@ -48,44 +45,57 @@ void bpm2Text(double bpm, char *text, uint32_t *fontHRColor) {
 
 	} else if ((bpm > 35) && (bpm < 220)) {
 		sprintf(text, "HR: %.0f ", bpm);
-		*fontHRColor = GRAPHICS_RGBA32(0x00, 0xff, 0x00, 0xff);
+		*fontHRColor = GRAPHICS_RGBA32_GREEN;
 
 	} else if ((bpm >= 0) && (bpm < 35)) {
 		sprintf(text, "HR: U DEAD?");
-		*fontHRColor = GRAPHICS_RGBA32(0x00, 0x00, 0xff, 0xff);
+		*fontHRColor = GRAPHICS_RGBA32_RED;
 	} else {
 		sprintf(text, "HR: SENSOR ISSUES");
 		*fontHRColor = GRAPHICS_RGBA32_RED;
 	}
 }
 
-void look_dir2Text(unsigned char *c, char *msg, uint32_t *fontColor) {
-	if (c[0] == c[1] && c[0]) {
-		switch (c[0]) {
-			case CAReOCV_LOOKING_AWAY:
-				sprintf(msg, "LOOSING ATTENTION LEFT");
-				*fontColor = GRAPHICS_RGBA32_RED;
-				break;
-				
-			case CAReOCV_LOOKING_CENTER:
-				sprintf(msg, "FOCUS ON THE ROAD");
-				*fontColor = GRAPHICS_RGBA32(0x00, 0xff, 0x00, 0xff);
-				break;
-			default: break;
-		}
-	} else {
-		sprintf(msg, "NO EYES DETECTED");
-		*fontColor = GRAPHICS_RGBA32_RED;		
-	}
-}
-
-int driverState2Text(DRIVER_STATE_T ds, char *msg, uint32_t *fontColor) {
+int driverState2Text(DRIVER_STATE_T ds, char *msg, uint32_t *fontColor, unsigned *wpos) {
 	if (ds == DRIVER_WARNING) {
+		wpos[0] = 0;
+		wpos[1] = 120;
 		sprintf(msg, "WARNING");
 		*fontColor = GRAPHICS_RGBA32_YELLOW;
 		return 1;
 	} else if (ds == DRIVER_STOP) {
-		sprintf(msg, "STOP\nWellness Affected");
+		wpos[0] = 120;
+		wpos[1] = 80;
+		sprintf(msg, "    STOP\nrequested");
+		*fontColor = GRAPHICS_RGBA32_RED;
+		return 1;
+	}
+	return 0;
+}
+// requ ested
+
+int gazeState2Text(GAZE_STATE_T ds, char *msg, uint32_t *fontColor) {
+	if (ds == EYES_FOCUS) {
+		sprintf(msg, "Focus");
+		*fontColor = GRAPHICS_RGBA32_GREEN;
+		return 1;
+	} else if (ds == EYES_AWAY_LEFT) {
+		sprintf(msg, "Gaze at left");
+		*fontColor = GRAPHICS_RGBA32_ORANGE;
+		return 1;
+	}
+	else if (ds == EYES_AWAY_RIGHT) {
+		sprintf(msg, "Gaze at right");
+		*fontColor = GRAPHICS_RGBA32_ORANGE;
+		return 1;
+	}
+	else if (ds == EYES_CLOSED) {
+		sprintf(msg, "Eyes closed");
+		*fontColor = GRAPHICS_RGBA32_RED;
+		return 1;
+	}
+	else if (ds == FACE_ERROR) {
+		sprintf(msg, "Place yourself in the camera range");
 		*fontColor = GRAPHICS_RGBA32_RED;
 		return 1;
 	}
@@ -96,14 +106,16 @@ void *graphicTask(void *arg) {
 	GRAPHCARE_T *gr = (GRAPHCARE_T *) arg;
 	struct timespec t;
 	unsigned i, fontSize;
-	// unsigned char look_dir[CAReOCV_MAX_EYES];
-	char msgHR[25], msgLOOKDIR[25];
-	uint32_t fontHRColor;
-	uint32_t fontLOOKColor;
-	uint32_t rc;
+	char msgHR[25], msgDriverState[25], msgGazeState[25];
+	uint32_t fontHRColor, fontColorDriverState, fontColorGazeState;
+	uint32_t rcDriver, rcGaze;
+	unsigned warnPosition[2];
 	double bpm;
+
 	DRIVER_STATE_T driverState;
+	GAZE_STATE_T	gazeState;
 	EYESFOUNDSTATE_T eyeState;
+
 	std::vector<cv::Rect> localFaces;
 	fontSize = 15;
 
@@ -116,7 +128,6 @@ void *graphicTask(void *arg) {
 		if(sem_trywait(gr->semSharedFaces) == 0) {
 			localFaces = gr->sharedFaces.rect;
 			eyeState = gr->sharedFaces.state; 
-			// memcpy(look_dir, gr->sharedFaces.look_dir, localFaces.size());
 			sem_post(gr->semSharedFaces);
 			if (eyeState == EYES_FOUND) {
 				for (i = 0; i < localFaces.size(); i++) {
@@ -127,25 +138,34 @@ void *graphicTask(void *arg) {
 
 		bpm = *gr->fusionBuffer->bpm;
 		driverState = gr->fusionBuffer->driverState;
+		gazeState = gr->fusionBuffer->gazeState;
 
 		bpm2Text(bpm, msgHR, &fontHRColor);
-		rc = driverState2Text(driverState, msgLOOKDIR, &fontLOOKColor);
-		// look_dir2Text(look_dir, msgLOOKDIR, &fontLOOKColor);
+		rcDriver = driverState2Text(driverState, msgDriverState, &fontColorDriverState, warnPosition);
+		rcGaze = gazeState2Text(gazeState, msgGazeState, &fontColorGazeState);
 
     	graphics_resource_render_text_ext(img_overlay, 0, 160,
 			GRAPHICS_RESOURCE_WIDTH,
 			GRAPHICS_RESOURCE_HEIGHT,
-			fontHRColor, /* fg */
-	  		GRAPHICS_RGBA32(0, 0, 0, 0x00), /* bg */
+			fontHRColor, 						// foreground color
+	  		GRAPHICS_RGBA32(0, 0, 0, 0x00), 	// background color
 			msgHR, strlen(msgHR), fontSize);
 
-    	if (rc) 
-    		graphics_resource_render_text_ext(img_overlay, 0, 120,
+    	if (rcDriver) 
+    		graphics_resource_render_text_ext(img_overlay, warnPosition[0], warnPosition[1],
     			GRAPHICS_RESOURCE_WIDTH,
     			GRAPHICS_RESOURCE_HEIGHT,
-    			fontLOOKColor, /* fg */
-    			GRAPHICS_RGBA32(0, 0, 0, 0x00), /* bg */
-    			msgLOOKDIR, strlen(msgLOOKDIR), fontSize);
+    			fontColorDriverState, 			// foregounrd color
+    			GRAPHICS_RGBA32(0, 0, 0, 0x00), // background color
+    			msgDriverState, strlen(msgDriverState), fontSize);
+    	
+    	if(rcGaze)
+    		graphics_resource_render_text_ext(img_overlay, 0, 140,
+    			GRAPHICS_RESOURCE_WIDTH,
+    			GRAPHICS_RESOURCE_HEIGHT,
+    			fontColorGazeState, 			// foregounrd color
+    			GRAPHICS_RGBA32(0, 0, 0, 0x00), // background color
+    			msgGazeState, strlen(msgGazeState), fontSize);
 		
     	graphics_update_displayed_resource(img_overlay, 0, 0, 0, 0);
 		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &t, NULL);

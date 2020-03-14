@@ -39,9 +39,11 @@ double varianceEstimator(double sbpm, double bpm) {
 	return aux / sbpm * 100.0;
 }
 
-int MocosTable(EYES_STATE_T eyesStatus, double bpm, double vbpm, FUSIONBUFFER_T *buff, MLED7219 *ledm) {
+int MocosTable(GAZE_STATE_T eyesStatus, double bpm, double vbpm, FUSIONBUFFER_T *buff, MLED7219 *ledm) {
 
-	if (eyesStatus == EYES_AWAY) {
+	buff->gazeState = eyesStatus;
+
+	if ((eyesStatus == EYES_AWAY_LEFT) || (eyesStatus == EYES_AWAY_RIGHT)) {
 		if (bpm < HR_LOW) {
 			buff->driverState = DRIVER_STOP;
 			ledm->displayStopSymbol();
@@ -135,58 +137,49 @@ int MocosTable(EYES_STATE_T eyesStatus, double bpm, double vbpm, FUSIONBUFFER_T 
 
 }
 
-EYES_STATE_T focusEstimator (EYESPOSBUFF_T *eyes) {
-	static unsigned eyesFound = 0;
-	static unsigned faceFound = 0;
-	static unsigned kept_dir = 0;
-	static unsigned char c[CAReOCV_MAX_EYES];
+GAZE_STATE_T focusEstimator (EYESPOSBUFF_T *eyes) {
+	static unsigned framesEyesFoundClosed = 0;
+	static unsigned framesFaceNotFound = 0;
+	static unsigned framesGazeAway = 0;
 
 	if (eyes->state == EYES_FOUND_CLOSED) {
-		eyesFound++;
-		if (eyesFound > EYES_CLOSED_FRAME_THRESHOLD) {	// this threshold can be smalled depending on the speed
+		framesEyesFoundClosed++;
+		if (framesEyesFoundClosed > EYES_CLOSED_FRAME_THRESHOLD) {	// this threshold can be smalled depending on the speed
 			return EYES_CLOSED;
 		}
 	}
 
 	if (eyes->state == NO_EYES_NO_FACE) {
-		faceFound ++;
-		if (faceFound > FACE_NOT_FOUND_THRESHOLD) {
+		framesFaceNotFound ++;
+		if (framesFaceNotFound > FACE_NOT_FOUND_THRESHOLD) {
 			return FACE_ERROR;
 		}
 	}
 
-	for (size_t i = 0; i < 2*eyes->size; i += 2) { // this is two because we skipp the y axis
-		eyesFound = 0;
-		if ((eyes->data[i] > 0.4) && (eyes->data[i] < 0.58)) {
-			c[i] = CAReOCV_LOOKING_CENTER;
-		
-		} else 
-			c[i] = CAReOCV_LOOKING_AWAY;
+	framesEyesFoundClosed = 0;
+	framesFaceNotFound = 0;
 
-		if ((i % 2) == 1) {
-			if ((c[i - 1] == c[i]) && (c[i] > 0)) {
-				
-				switch(c[i]) {
-					case CAReOCV_LOOKING_AWAY:
-						printf("AWAY\n");
-						kept_dir++;
-						
-						if (kept_dir > 3) 
-							return EYES_AWAY;
-
-						break;
-
-					case CAReOCV_LOOKING_CENTER:
-						kept_dir = 0;
-						printf("CENTER\n");
-				}
-				return EYES_FOCUS;
-			} 
+	if (eyes->data[0] > 0.59) {
+		framesGazeAway++;
+		if (framesGazeAway > 3) {
+			return EYES_AWAY_LEFT;
 		}
+		else
+			return EYES_FOCUS;
 
+	} else if (eyes->data[0] < 0.47) {
+		framesGazeAway++;
+		if(framesGazeAway > 3) {
+			return EYES_AWAY_RIGHT;
+		}
+		else 
+			return EYES_FOCUS;
+
+	} else {
+		framesGazeAway = 0;
+		return EYES_FOCUS;
 	}
-	// TODO returning the previous state
-	return EYES_FOCUS; 
+	return FACE_ERROR; 
 }
 
 void *fusionTask(void *arg) {
@@ -195,7 +188,7 @@ void *fusionTask(void *arg) {
 	MLED7219 ledmatrix;
 
 	fs->buffer.bpm = &bpm; 
-	EYES_STATE_T eyesStatus = EYES_FOCUS;
+	GAZE_STATE_T eyesStatus = EYES_FOCUS;
 
 	if(ledmatrix.init(0) < 0)
 		fprintf(stderr, "[error] could init LED matrix\n");
@@ -203,7 +196,6 @@ void *fusionTask(void *arg) {
 	while(fs->exit) {
 
 		/** BPM ANALYZER **/
-		// TODO: semapthores for bmp?
 		sem_wait(fs->hrReady);
 		bpm = fs->bpm;
 		// sem_post(&fs->heartRate)
@@ -213,9 +205,7 @@ void *fusionTask(void *arg) {
 
 		/** VIEW POINT ANALYZER **/
 		if(sem_trywait(fs->eyePosReady) == 0) {
-			// localFaces = gr->sharedFaces.rect;
-			// memcpy(look_dir, gr->sharedFaces.look_dir, localFaces.size());
-			focusEstimator(&fs->eyes);
+			eyesStatus = focusEstimator(&fs->eyes);
 			sem_post(fs->eyePosReady);
 		}
 		/** VIEW POINT END **/

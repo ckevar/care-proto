@@ -6,7 +6,9 @@
 
 #define CAReOCV_PRIORITY 60
 #define CAReOCV_LOOKING_CENTER	1
-#define CAReOCV_LOOKING_AWAY	2
+#define CAReOCV_LOOKING_LEFT	2
+#define CAReOCV_LOOKING_RIGHT	3
+#define CAReOCV_LOOKING_AWAY	4
 #define CAReOCV_MAX_EYES		10
 
 typedef struct {
